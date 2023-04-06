@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useEffect } from "react";
 import Docxtemplater from "docxtemplater";
 import PizZip from "pizzip";
 import { saveAs } from "file-saver";
@@ -6,6 +6,10 @@ import Head from "next/head";
 import axios from "axios";
 import { useForm, useFieldArray } from "react-hook-form";
 import { useState } from "react";
+import { TextField } from "@mui/material";
+import { NumericFormat, NumericFormatProps } from 'react-number-format';
+import PropTypes from 'prop-types';
+import { normalizeCepNumber, normalizeCnpjNumber, normalizePhoneNumber } from "../mask/mask";
 
 const path = require("path");
 
@@ -25,33 +29,6 @@ var mes = String(data.getMonth() + 1).padStart(2, "0");
 var ano = data.getFullYear();
 var dataAtual = dia + "/" + mes + "/" + ano;
 
-// type Inputs = {
-//   nomeCliente: string,
-//   cnpj: string,
-//   endereco: string,
-//   celular: string,
-//   cep: string,
-//   logradouro: string,
-//   bairro: string,
-//   localidade: string,
-//   uf: string,
-//   numero: string,
-//   produtos?: [
-//     {
-//       descricao: string,
-//       valorUn: number,
-//       quant: number,
-//       total: number,
-//     }
-//   ],
-//   totalProds: number,
-//   frmPgt: string,
-//   info: string,
-//   obs: string,
-//   numPed: string,
-// };
-
-// const conteudo = path.resolve("renderer", "template", "template.docx")
 const conteudo = "/template/template.docx"
 
 
@@ -66,7 +43,6 @@ const generateDocument = (dados) => {
     console.log(content);
     var zip = new PizZip(content);
     var doc = new Docxtemplater(zip, { linebreaks: true });
-    // var doc = new Docxtemplater().loadZip(zip);
     console.log(dados);
     doc.setData(dados);
     try {
@@ -106,10 +82,48 @@ const generateDocument = (dados) => {
         "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
     });
     // Output the document using Data-URI
-    saveAs(out, "output.docx");
+    saveAs(out, `output.docx`);
     console.log("aaa2");
   });
 };
+
+interface CustomProps {
+  onChange: (event: { target: { name: string; value: string } }) => void;
+  name: string;
+}
+
+const NumericFormatCustom = React.forwardRef<NumericFormatProps, CustomProps>(function NumericFormatCustom(
+  props,
+  ref,
+) {
+  const { onChange, ...other } = props;
+
+  return (
+    <NumericFormat
+      {...other}
+      getInputRef={ref}
+      onValueChange={(values) => {
+        onChange({
+          target: {
+            name: props.name,
+            value: values.value,
+          },
+        });
+      }}
+      valueIsNumericString
+      decimalSeparator=","
+      thousandSeparator="."
+      decimalScale={2} fixedDecimalScale
+      prefix="R$ "
+    />
+  );
+});
+
+NumericFormatCustom.propTypes = {
+  name: PropTypes.string.isRequired,
+  onChange: PropTypes.func.isRequired,
+};
+
 
 function Home() {
 
@@ -117,13 +131,31 @@ function Home() {
     defaultValues: {
       produtos: [{
         descricao: "",
-        valorUn: null,
-        quant: null,
-        total: null,
+        valorUn: 0,
+        quant: 0,
+        total: 0,
       }]
     }
   });
-  const { fields, append, remove } = useFieldArray<any>({
+
+  const phoneValue = watch("celular")
+  const cnpjValue = watch("cnpj")
+  const cepValue = watch("cep")
+
+  useEffect(() => {
+    setValue("celular", normalizePhoneNumber(phoneValue))
+  }, [phoneValue])
+
+  useEffect(() => {
+    setValue("cnpj", normalizeCnpjNumber(cnpjValue))
+  }, [cnpjValue])
+
+  useEffect(() => {
+    setValue("cep", normalizeCepNumber(cepValue))
+  }, [cepValue])
+
+
+  const { fields, append, remove, replace } = useFieldArray<any>({
     control,
     name: "produtos"
   });
@@ -132,32 +164,33 @@ function Home() {
   const onSubmit = data => {
     let total = 0;
     data.produtos.map((produto) => {
-      total += +produto.total
+      const valorNumerico = (produto.total.replace(/[\D]/g, '') / 100).toFixed(2);
+      produto.valorUn = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(produto.valorUn)
+      total += +valorNumerico
     })
-    data.totalProds = total;
+    const valorFormatado = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(total);
+    data.totalProds = valorFormatado;
     data.endereco = `${data.logradouro}, ${data.numero} CEP: ${data.cep} ${local.localidade} - ${local.uf}`;
     data.hoje = dataAtual;
     generateDocument(data)
   };
 
   async function getCep(cep) {
-    if (cep.length == 8) {
+    if (cep.length <= 9) {
       try {
         const response = await axios.get("https://viacep.com.br/ws/" + cep + "/json/");
         console.log(response);
         setLocal(response.data);
         setValue("logradouro", response.data.logradouro)
         setValue("bairro", response.data.bairro)
-        setValue("localidade", response.data.localidade)
-        setValue("uf", response.data.uf)
       } catch (error) {
         console.error(error);
       }
     } else {
       throw console.error("CEP Inválido");
     }
-
   }
+
   return (
     <>
       <Head>
@@ -174,76 +207,102 @@ function Home() {
 
         <div className="mt-12 text-center">
 
-          <form onSubmit={handleSubmit(onSubmit)} className="flex flex-wrap justify-center flex-col items-center">
+          <form onSubmit={handleSubmit(onSubmit)} className="flex flex-wrap justify-center flex-col items-center gap-4">
 
-            <div className="w-full">
-              <label htmlFor="">Número do Pedido</label>
-              <input type="number" placeholder="Número do Pedido" {...register("numPed", { required: true })} className="mx-6 mb-2 p-2 w-1/10 h-10 rounded-xl" />
-              <input type="text" placeholder="Forma de Pagamento" {...register("frmPgt", { required: true })} className="mx-6 mb-2 p-2 w-1/6 h-10 rounded-xl" />
-            </div>
+            <TextField type="number" label="Número do Pedido" {...register("numPed", { required: true })} className="mx-6 mb-2 p-2 w-1/4 h-10 rounded-xl" variant="filled" />
+            <TextField type="text" label="Forma de Pagamento" {...register("frmPgt", { required: true })} className="mx-6 mb-2 p-2 w-1/4 h-10 rounded-xl" variant="filled" />
 
-            <div className="w-full">
-              <input type="text" placeholder="Nome do Cliente" {...register("nomeCliente", { required: true, min: 15, maxLength: 80 })} className="mb-2 mx-2 p-2 w-1/4 h-10 rounded-xl" />
-              <input type="text" placeholder="CNPJ" {...register("cnpj", { required: true, min: 14 })} className="mb-2 mx-2 p-2 w-2/10 h-10 rounded-xl" />
-            </div>
+            <TextField type="text" label="Nome do Cliente" {...register("nomeCliente", { required: true, min: 15, maxLength: 80 })} className="mb-2 mx-2 p-2 w-1/4 h-10 rounded-xl" variant="filled" />
+            <TextField type="text" label="CNPJ" {...register("cnpj", { required: true, min: 8, maxLength: 18 })} className="mb-2 mx-2 p-2 w-1/4 h-10 rounded-xl" variant="filled" />
 
-            <div className="w-full">
-              <input type="text" placeholder="Celular" {...register("celular", { required: true, min: 8, maxLength: 12 })} className="mb-2 mx-2 p-2 w-1/12 h-10 rounded-xl" />
-              <input type="text" placeholder="CEP" {...register("cep", { required: true, min: 8, maxLength: 8 })} className="mb-2 mx-2 p-2 w-1/12 h-10 rounded-xl" onBlur={(e) => getCep(e.target.value)} />
-              <input type="text" placeholder="Logradouro" {...register("logradouro", { required: true })} className="mb-2 mx-2 p-2 w-1/4 h-10 rounded-xl" />
-            </div>
+            <TextField type="text" label="Celular" {...register("celular", { required: true, min: 8, maxLength: 15 })} className="mb-2 mx-2 p-2 w-1/4 h-10 rounded-xl" variant="filled" />
 
-            <div className="w-full">
-              <input type="text" placeholder="Bairro" {...register("bairro", { required: true })} className="mb-2 mx-2 p-2 w-1/4 h-10 rounded-xl" />
-              <input type="text" placeholder="Número" {...register("numero", { required: true })} className="mb-2 mx-2 p-2 w-1/12 h-10 rounded-xl" />
-            </div>
+            <TextField type="text" label="CEP" {...register("cep", { required: true, min: 8, maxLength: 9 })} className="mb-2 mx-2 p-2 w-1/4 h-10 rounded-xl" onBlur={(e) => getCep(e.target.value)} variant="filled">
+            </TextField>
 
-            <textarea rows={8} placeholder="Informações" {...register("info", {})} className="mb-2 p-2 w-full rounded-xl" />
-            <textarea rows={8} placeholder="Observações" {...register("obs", {})} className="mb-2 p-2 w-full rounded-xl" />
+            <TextField type="text" label="Logradouro" {...register("logradouro", { required: true })} className="mb-2 mx-2 p-2 w-1/4 h-10 rounded-xl" variant="filled" />
+
+            <TextField type="text" label="Bairro" {...register("bairro", { required: true })} className="mb-2 mx-2 p-2 w-1/4 h-10 rounded-xl" variant="filled" />
+            <TextField type="text" label="Número" {...register("numero", { required: true })} className="mb-2 mx-2 p-2 w-1/4 h-10 rounded-xl" variant="filled" />
+
+            <TextField rows={4} label="Informações" {...register("info", {})} className="m-5 w-full rounded-xl" variant="filled" multiline />
+            <TextField rows={4} label="Observações" {...register("obs", {})} className="m-5 w-full rounded-xl" variant="filled" multiline />
 
             {fields.map((field, index) => {
+              const produtos = watch("produtos")
+
+              const handleChange = (event) => {
+                if (event.target.name === 'valorUn') {
+                  setValue(`produtos.${index}.valorUn`, event.target.value);
+                  const quant = getValues(`produtos.${index}.quant`)
+                  const valor = event.target.value
+                  console.log(produtos[index]);
+                  setValue(`produtos.${index}.total`, (quant * valor).toLocaleString('pt-BR', {
+                    style: 'currency',
+                    currency: 'BRL'
+                  }))
+                }
+                if (event.target.name === 'quant') {
+                  setValue(`produtos.${index}.quant`, event.target.value);
+                  const quant = event.target.value
+                  const valor = getValues(`produtos.${index}.valorUn`)
+                  console.log(valor);
+                  setValue(`produtos.${index}.total`, (quant * valor).toLocaleString('pt-BR', {
+                    style: 'currency',
+                    currency: 'BRL'
+                  }))
+                }
+              };
               return (
-                <div className="w-full flex justify-center flex-col items-center border-2 border-r-gray-500 m-2" key={field.id}>
+                <div className="w-full flex justify-center flex-col items-center border-2 border-r-gray-500 m-2 gap-4" key={field.id}>
 
-                  <input
-                    placeholder="Descrição do Produto"
+                  <TextField
+                    label="Descrição do Produto"
                     {...register(`produtos.${index}.descricao`)}
-                    className="mb-2 mx-2 p-2 w-1/2 h-10 rounded-xl"
+                    className="mb-8 mx-2 p-2 w-1/2 h-10 rounded-xl"
+                    variant="filled"
                   />
 
-                  <input
-                    placeholder="Quantidade"
+                  <TextField
+                    label="Quantidade"
                     {...register(`produtos.${index}.quant` as const)}
-                    className="mb-2 mx-2 p-2 w-1/2 h-10 rounded-xl"
+                    className="mb-8 mx-2 p-2 w-1/2 h-10 rounded-xl"
+                    onChange={handleChange}
+                    name="quant"
+                    variant="filled"
+                    type="number"
                   />
 
-                  <input
-                    placeholder="Valor Unitário do Produto"
+                  <TextField
+                    label="Valor Unitário do Produto"
                     {...register(`produtos.${index}.valorUn`)}
-                    className="mb-2 mx-2 p-2 w-1/2 h-10 rounded-xl"
-                    onChange={() => console.log(getValues(`produtos.${index}.quant`))}
+                    className="mb-8 mx-2 p-2 w-1/2 h-10 rounded-xl"
+                    onChange={handleChange}
+                    name="valorUn"
+                    id="formatted-numberformat-input"
+                    InputProps={{
+                      inputComponent: NumericFormatCustom as any,
+                    }}
+                    variant="filled"
                   />
 
-                  <input
-                    placeholder="Total"
+                  <TextField
+                    label="Total"
+                    disabled
                     {...register(`produtos.${index}.total`)}
-                    onFocus={() => {
-                      let quant = getValues(`produtos.${index}.quant`);
-                      let valor = getValues(`produtos.${index}.valorUn`);
-                      setValue(`produtos.${index}.total`, quant * valor)
-                    }}
                     className="mb-2 mx-2 p-2 w-1/2 h-10 rounded-xl"
+                    variant="filled"
                   />
 
                   <div>
-                    {fields.length !== 1 && <button
+                    {fields.length !== 1 && <button className="mt-5"
                       onClick={() => remove(index)}><svg width="40px" height="40px" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
                         <g id="Edit / Remove_Minus_Circle">
                           <path id="Vector" d="M8 12H16M12 21C7.02944 21 3 16.9706 3 12C3 7.02944 7.02944 3 12 3C16.9706 3 21 7.02944 21 12C21 16.9706 16.9706 21 12 21Z" stroke="#000000" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
                         </g>
                       </svg></button>}
 
-                    {fields.length - 1 === index && <button onClick={() => append({ descricao: '', quant: null, valorUn: null, total: null })}><svg width="40px" height="40px" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    {fields.length - 1 === index && <button className="mt-5" onClick={() => append({ descricao: '', quant: 0, valorUn: 0, total: 0 })}><svg width="40px" height="40px" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
                       <path d="M7 12L12 12M12 12L17 12M12 12V7M12 12L12 17" stroke="#000000" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
                       <circle cx="12" cy="12" r="9" stroke="#000000" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
                     </svg></button>}
