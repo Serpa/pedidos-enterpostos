@@ -42,7 +42,13 @@ const generateDocument = (dados) => {
     }
     console.log(content);
     var zip = new PizZip(content);
-    var doc = new Docxtemplater(zip, { linebreaks: true });
+    var doc = new Docxtemplater(zip, {
+      paragraphLoop: true,
+      linebreaks: true,
+      nullGetter: function() {
+        return "";
+    }
+    });
     console.log(dados);
     doc.setData(dados);
     try {
@@ -172,7 +178,27 @@ function Home() {
     data.totalProds = valorFormatado;
     data.endereco = `${data.logradouro}, ${data.numero} CEP: ${data.cep} ${local.localidade} - ${local.uf}`;
     data.hoje = dataAtual;
+    if(data.freteText.length>0){
+      data = {
+        ...data,
+        frete:true,
+      }
+    }
+    if(data.impostosText.length>0){
+      data = {
+        ...data,
+        impostos:true,
+      }
+    }
+    if(data.valorSinal.length>0){
+      data = {
+        ...data,
+        banco:true,
+      }
+    }
+    console.log(data)
     generateDocument(data)
+
   };
 
   async function getCep(cep) {
@@ -205,28 +231,47 @@ function Home() {
         </div>
 
 
-        <div className="mt-12 text-center">
+        <div className="text-center">
 
-          <form onSubmit={handleSubmit(onSubmit)} className="flex flex-wrap justify-center flex-col items-center gap-4">
+          <form onSubmit={handleSubmit(onSubmit)} className="flex flex-wrap justify-center flex-col items-center gap-y-5">
+            
+            <TextField type="number" label="Número do Pedido" {...register("numPed", { required: true })} className="mx-6 mb-2 p-2 w-full h-10 rounded-xl" variant="filled" />
+            <TextField type="text" label="Forma de Pagamento" {...register("frmPgt", { required: true })} className="mx-6 mb-2 p-2 w-full  h-10 rounded-xl" variant="filled" />
 
-            <TextField type="number" label="Número do Pedido" {...register("numPed", { required: true })} className="mx-6 mb-2 p-2 w-1/4 h-10 rounded-xl" variant="filled" />
-            <TextField type="text" label="Forma de Pagamento" {...register("frmPgt", { required: true })} className="mx-6 mb-2 p-2 w-1/4 h-10 rounded-xl" variant="filled" />
+            <TextField type="text" label="Nome do Cliente" {...register("nomeCliente", { required: true, min: 15, maxLength: 80 })} className="mb-2 mx-2 p-2 w-full h-10 rounded-xl" variant="filled" />
+            
+            <TextField type="text" label="CNPJ" {...register("cnpj", { required: true, min: 8, maxLength: 18 })} className="mb-2 mx-2 p-2 w-full h-10 rounded-xl" variant="filled" />
 
-            <TextField type="text" label="Nome do Cliente" {...register("nomeCliente", { required: true, min: 15, maxLength: 80 })} className="mb-2 mx-2 p-2 w-1/4 h-10 rounded-xl" variant="filled" />
-            <TextField type="text" label="CNPJ" {...register("cnpj", { required: true, min: 8, maxLength: 18 })} className="mb-2 mx-2 p-2 w-1/4 h-10 rounded-xl" variant="filled" />
+            <TextField type="text" label="Celular" {...register("celular", { required: true, min: 8, maxLength: 15 })} className="mb-2 mx-2 p-2 w-full h-10 rounded-xl" variant="filled" />
 
-            <TextField type="text" label="Celular" {...register("celular", { required: true, min: 8, maxLength: 15 })} className="mb-2 mx-2 p-2 w-1/4 h-10 rounded-xl" variant="filled" />
-
-            <TextField type="text" label="CEP" {...register("cep", { required: true, min: 8, maxLength: 9 })} className="mb-2 mx-2 p-2 w-1/4 h-10 rounded-xl" onBlur={(e) => getCep(e.target.value)} variant="filled">
+            <TextField type="text" label="CEP" {...register("cep", { required: true, min: 8, maxLength: 9 })} className="mb-2 mx-2 p-2 w-full h-10 rounded-xl" onBlur={(e) => getCep(e.target.value)} variant="filled">
             </TextField>
 
-            <TextField type="text" label="Logradouro" {...register("logradouro", { required: true })} className="mb-2 mx-2 p-2 w-1/4 h-10 rounded-xl" variant="filled" />
+            <TextField type="text" label="Logradouro" {...register("logradouro", { required: true })} className="mb-2 mx-2 p-2 w-full h-10 rounded-xl" variant="filled" />
 
-            <TextField type="text" label="Bairro" {...register("bairro", { required: true })} className="mb-2 mx-2 p-2 w-1/4 h-10 rounded-xl" variant="filled" />
-            <TextField type="text" label="Número" {...register("numero", { required: true })} className="mb-2 mx-2 p-2 w-1/4 h-10 rounded-xl" variant="filled" />
+            <TextField type="text" label="Bairro" {...register("bairro", { required: true })} className="mb-2 mx-2 p-2 w-full h-10 rounded-xl" variant="filled" />
+            <TextField type="text" label="Número" {...register("numero", { required: true })} className="mb-2 mx-2 p-2 w-full h-10 rounded-xl" variant="filled" />
 
-            <TextField rows={4} label="Informações" {...register("info", {})} className="m-5 w-full rounded-xl" variant="filled" multiline />
-            <TextField rows={4} label="Observações" {...register("obs", {})} className="m-5 w-full rounded-xl" variant="filled" multiline />
+            <TextField rows={4} label="Informações" {...register("info", {})} className="mt-4 w-full rounded-xl" variant="filled" placeholder="PRODUTO SERA FATURADO SOMENTE APOS A CONFIRMAÇÃO DO SINAL" multiline />
+            <TextField rows={4} label="Condições de Pagamento" {...register("condPagamento", {})} className="w-full rounded-xl" variant="filled" multiline />
+
+            
+            <TextField type="text" label="Frete" {...register("freteText", { required: false })} className="mb-2 mx-2 p-2 w-full h-10 rounded-xl" variant="filled" />
+
+            <TextField type="text" label="Impostos" {...register("impostosText", { required: false })} className="mb-2 mx-2 p-2 w-full h-10 rounded-xl" variant="filled" />
+
+            <TextField
+                    label="Valor Sinal"
+                    {...register("valorSinal", { required: false })}
+                    className="mb-8 mx-2 p-2 w-full h-10 rounded-xl"
+                    name="valorSinal"
+                    id="formatted-numberformat-input2"
+                    InputProps={{
+                      inputComponent: NumericFormatCustom as any,
+                    }}
+                    variant="filled"
+                  />
+
 
             {fields.map((field, index) => {
               const produtos = watch("produtos")
@@ -259,14 +304,14 @@ function Home() {
                   <TextField
                     label="Descrição do Produto"
                     {...register(`produtos.${index}.descricao`)}
-                    className="mb-8 mx-2 p-2 w-1/2 h-10 rounded-xl"
+                    className="mb-8 mx-2 p-2 w-full h-10 rounded-xl"
                     variant="filled"
                   />
 
                   <TextField
                     label="Quantidade"
                     {...register(`produtos.${index}.quant` as const)}
-                    className="mb-8 mx-2 p-2 w-1/2 h-10 rounded-xl"
+                    className="mb-8 mx-2 p-2 w-full h-10 rounded-xl"
                     onChange={handleChange}
                     name="quant"
                     variant="filled"
@@ -276,7 +321,7 @@ function Home() {
                   <TextField
                     label="Valor Unitário do Produto"
                     {...register(`produtos.${index}.valorUn`)}
-                    className="mb-8 mx-2 p-2 w-1/2 h-10 rounded-xl"
+                    className="mb-8 mx-2 p-2 w-full h-10 rounded-xl"
                     onChange={handleChange}
                     name="valorUn"
                     id="formatted-numberformat-input"
@@ -290,7 +335,7 @@ function Home() {
                     label="Total"
                     disabled
                     {...register(`produtos.${index}.total`)}
-                    className="mb-2 mx-2 p-2 w-1/2 h-10 rounded-xl"
+                    className="mb-2 mx-2 p-2 w-full h-10 rounded-xl"
                     variant="filled"
                   />
 
